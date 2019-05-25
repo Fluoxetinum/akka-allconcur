@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "AkkaAllConcur": {
+      "commandName": "Project",
+      "commandLineArgs": "localhost 14700 9"
+    }
+  }
+}

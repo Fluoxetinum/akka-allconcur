@@ -1,15 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
 using Akka.Actor;
+using AkkaAllConcur.Configuration;
 
 namespace AkkaAllConcur
 {
     static class GraphCreator
     {
-        public static Dictionary<IActorRef, List<IActorRef>> ComputeAllReliableSuccessors(AllConcurConfig config, List<IActorRef> actors)
+        public static Dictionary<IActorRef, List<IActorRef>> ComputeAllReliableSuccessors(ProgramConfig config, List<IActorRef> actors)
         {      
-            return config.OverlayGraph == AllConcurConfig.OverlayGraphType.BINOMIAL ? 
+            return config.Algorithm.OverlayGraph == AllConcurConfig.OverlayGraphType.BINOMIAL ? 
                 ComputeUsingBinomial(actors) : ComputeUsingGs(actors);
         }
 

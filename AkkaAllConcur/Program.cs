@@ -3,115 +3,119 @@ using System.Xml;
 using System.Collections.Generic;
 using Akka.Actor;
 using Akka.Configuration;
+using AkkaAllConcur.Configuration;
 
 namespace AkkaAllConcur
 {
     class Program
     {
-        static string ConfigPath = "StartUpConfig.xml";
-        static string SystemName = "AllConcurSystem";
+        static string SystemName = "AllConcurSystem";      
 
         static void Main(string[] args)
         {
+            string hostname = args[0];
+            string port = args[1];
+            int n = Convert.ToInt32(args[2]);
 
-            AllConcurConfig config = ParseConfig(ConfigPath);
+            AllConcurConfig algConfig = SettingsParser.ParseAlgConfig();
+            ActorSystem system = CreateActorSystem(hostname, port);
+            List<IActorRef> thisHostActors = CreateActors(system, n);
 
-            if (args.Length != 0)
+            Host currentHost = new Host { HostName = hostname, Port = port, ActorsNumber = n };
+
+            bool attach;
+            while (true)
             {
-                config.ThisHostIndex = Convert.ToInt32(args[0]);
+                Console.WriteLine("|ALLCONCUR|: Do you want to attach to [r]emote system or [s]tart your own?");
+                Console.Write(" => ");
+                string input = Console.ReadLine();
+                switch(input)
+                {
+                    case "s":
+                    case "start":
+                        attach = false;
+                        break;
+                    case "r":
+                    case "remote":
+                        attach = true;
+                        break;
+                    default:
+                        continue;
+                }
+                break;
             }
 
-            ActorSystem system = CreateActorSystem(config);
+            HostsConfig hostsConfig;
+            List<IActorRef> allActors;
+            List<Host> hosts = new List<Host>();
+            
+            if (!attach) // first machine in a system
+            {
+                hosts.Add(currentHost);
+                hostsConfig = new HostsConfig(hosts);
+                allActors = thisHostActors;
+            }
+            else
+            {
+                Console.WriteLine("|ALLCONCUR|: Please, input ip and port of the remote system actor yout want to connect to.");
+                Console.Write(" IP (localhost) => ");
+                string remoteHost = Console.ReadLine();
+                if (string.IsNullOrEmpty(remoteHost))
+                {
+                    remoteHost = "localhost";
+                }
+                Console.Write(" Port (14700) => ");
+                string remotePort = Console.ReadLine();
+                if (string.IsNullOrEmpty(remotePort))
+                {
+                    remotePort = "14700";
+                }
 
-            List<IActorRef> thisHostActors = CreateActors(config, system);
+                string remoteActorPath = $"akka.tcp://{SystemName}@{remoteHost}:{remotePort}/user/svr0";
+                var remoteActor = system.ActorSelection(remoteActorPath);
+                var t = remoteActor.ResolveOne(TimeSpan.FromMinutes(5));
+                t.Wait();
 
-            List<IActorRef> allActors = ReachActors(config, system);
+                Messages.MembershipResponse m = 
+                    remoteActor.Ask<Messages.MembershipResponse>(new Messages.MembershipRequest(n)).Result;
 
-            Dictionary<IActorRef, List<IActorRef>> reliableOverlayGraph = GraphCreator.ComputeAllReliableSuccessors(config, allActors);
+                foreach (var rh in m.Hosts)
+                {
+                    hosts.Add(rh);
+                }
 
-            Dictionary<IActorRef, IActorRef> unreliableOverlayGraph = GraphCreator.ComputeAllUnreliableSucessors(allActors);            
+                hosts.Add(currentHost);
+                hostsConfig = new HostsConfig(hosts);
+
+                allActors = ReachActors(hostsConfig, system);
+            }
+
+            ProgramConfig pConfig = new ProgramConfig(algConfig, hostsConfig);
+
+            foreach (var a in thisHostActors)
+            {
+                a.Tell(new Messages.InitServer(allActors.AsReadOnly(), pConfig));
+            }
+
+            int msgI = 0;
+
+            system.Scheduler.Advanced.ScheduleRepeatedly(TimeSpan.FromSeconds(1),
+                    TimeSpan.FromMilliseconds(5000),
+                    () =>
+                    {
+                        foreach (var a in thisHostActors)
+                        {
+                            a.Tell(new Messages.BroadcastAtomically($"[{a.Path.Name}]:m{msgI}"));
+                        }
+                        msgI++;
+                    });
 
             Console.ReadKey();
-
             system.Dispose();
         }
 
-        static AllConcurConfig ParseConfig(string path)
+        static ActorSystem CreateActorSystem(string hostname, string port)
         {
-            AllConcurConfig config = new AllConcurConfig();
-
-            using (XmlReader r = XmlReader.Create(ConfigPath,
-                new XmlReaderSettings { IgnoreWhitespace = true, IgnoreComments = true }))
-            {
-                r.MoveToContent();
-                r.ReadStartElement("config");
-
-
-                r.ReadStartElement("hosts");
-                while (true)
-                {
-                    try
-                    {
-                        r.ReadStartElement("host");
-                    }
-                    catch (XmlException)
-                    {
-                        break;
-                    }
-
-                    r.ReadStartElement("hostname");
-                    string host = r.ReadContentAsString();
-                    r.ReadEndElement();
-                    r.ReadStartElement("port");
-                    string port = r.ReadContentAsString();
-                    r.ReadEndElement();
-
-                    r.ReadEndElement();
-
-                    config.AddHost(host, port);
-                }
-                r.ReadEndElement();
-
-                r.ReadStartElement("n");
-                config.N = r.ReadContentAsInt();
-                r.ReadEndElement();
-
-                r.ReadStartElement("graph");
-                string g = r.ReadContentAsString();
-                if (g == "gs")
-                {
-                    config.OverlayGraph = AllConcurConfig.OverlayGraphType.GS;
-                }
-                r.ReadEndElement();
-
-                r.ReadStartElement("epfd");
-                bool ep = r.ReadContentAsBoolean();
-                if (ep)
-                {
-                    config.FailureDetector = AllConcurConfig.FailureDetectorType.EVENTUALLY_PERFECT;
-                }
-                r.ReadEndElement();
-
-                r.ReadStartElement("version");
-                string v = r.ReadContentAsString();
-                if (v == "allconcur-plus")
-                {
-                    config.AlgorithmVersion = AllConcurConfig.AlgorithmVersionType.PLUS;
-                }
-                else if (v == "allconcur-plus-uniform")
-                {
-                    config.AlgorithmVersion = AllConcurConfig.AlgorithmVersionType.PLUS_AND_UNIFORM;
-                }
-                r.ReadEndElement();
-
-                r.ReadEndElement();
-            }
-            return config;
-        }
-        static ActorSystem CreateActorSystem(AllConcurConfig algorithmConfig)
-        {
-            var host = algorithmConfig.getThisHost();
-
             Config systemConfig = ConfigurationFactory.ParseString(@"
                 akka {
                     actor {
@@ -119,59 +123,56 @@ namespace AkkaAllConcur
                     }
                     remote {
                         dot-netty.tcp {
-                            hostname = " + host.HostName + @"
-                            port = " + host.Port + @"
+                            hostname = " + hostname + @"
+                            port = " + port + @"
                         }
                     }
                 }
             ");
 
             ActorSystem actorSystem = ActorSystem.Create(SystemName, systemConfig);
-
+            
             return actorSystem;
         }
-
-        static List<IActorRef> CreateActors(AllConcurConfig algorithmConfig, ActorSystem system)
+        static List<IActorRef> CreateActors(ActorSystem system, int n)
         {
-            int count = algorithmConfig.getThisHostActorCount();
-            int machineIndex = algorithmConfig.ThisHostIndex;
+            int count = n;
 
             List<IActorRef> actors = new List<IActorRef>();
 
             for (int i = 0; i < count; i++)
             {
-                IActorRef newActor = system.ActorOf<ServerActor>($"Server{machineIndex}-{i}");
+                IActorRef newActor = system.ActorOf<ServerActor>($"svr{i}");
                 actors.Add(newActor);
             }
 
             return actors;
         }
-
-        static List<IActorRef> ReachActors(AllConcurConfig algorithmConfig, ActorSystem system)
+        static List<IActorRef> ReachActors(HostsConfig hostsConfig, ActorSystem system)
         {
-            Console.Write("Trying to connect to all actors in the system...");
-
             List<IActorRef> actors = new List<IActorRef>();
 
-            int M = algorithmConfig.Machines;
-        
-            for (int i = 0; i < M; i++)
-            {
-                int count = algorithmConfig.getHostActorCount(i);
-                var host = algorithmConfig.getHost(i);
+            List<Host> allHosts = hostsConfig.Hosts;
 
-                for (int j = 0; j < count; j++)
+            foreach(var h in allHosts)
+            {
+                int count = h.ActorsNumber;
+
+                for (int i = 0; i < count; i++)
                 {
-                    ActorSelection a = system.ActorSelection($"akka.tcp://{SystemName}@{host.HostName}:{host.Port}/user/Server{i}-{j}");
+                    string hostName = h.HostName;
+                    string port = h.Port;
+
+                    ActorSelection a = system.ActorSelection($"akka.tcp://{SystemName}@{hostName}:{port}/user/svr{i}");
                     var t = a.ResolveOne(TimeSpan.FromMinutes(5));
                     t.Wait();
                     actors.Add(t.Result);
                 }
-            }
 
-            Console.WriteLine("OK");
+            }
 
             return actors;
         }
+
     }
 }
