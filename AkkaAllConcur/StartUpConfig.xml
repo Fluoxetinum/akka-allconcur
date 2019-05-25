@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<config>
+  <!-- [local/remote] -->
+  <hosts>
+    <!--
+    <host>
+      <hostname>192.168.1.1</hostname>
+      <port>14700</port>
+    </host>
+    <host>
+      <hostname>192.168.2.1</hostname>
+      <port>14700</port>
+    </host>
+    <host>
+      <hostname>192.168.3.1</hostname>
+      <port>14700</port>
+    </host>
+    -->
+    <host>
+      <hostname>localhost</hostname>
+      <port>14700</port>
+    </host>
+  </hosts>
+  <!-- Number of processes in the system. -->
+  <n>9</n>
+  <!--[bin]/[gs] graph (see paper)-->
+  <graph>bin</graph>
+  <!-- [perfect]/[eventually perfect] failure detection -->
+  <epfd>false</epfd>
+  <!-- [allconcur]/[allconcur-plus]/[allconcur-plus-uniform] algorithm-->
+  <version>allconcur</version>
+</config>
