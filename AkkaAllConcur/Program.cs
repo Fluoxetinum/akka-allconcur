@@ -9,7 +9,7 @@ namespace AkkaAllConcur
 {
     class Program
     {
-        static string SystemName = "AllConcurSystem";      
+        public static string SystemName = "AllConcurSystem";
 
         static void Main(string[] args)
         {
@@ -45,14 +45,12 @@ namespace AkkaAllConcur
                 break;
             }
 
-            HostsConfig hostsConfig;
             List<IActorRef> allActors;
             List<Host> hosts = new List<Host>();
             
             if (!attach) // first machine in a system
             {
                 hosts.Add(currentHost);
-                hostsConfig = new HostsConfig(hosts);
                 allActors = thisHostActors;
             }
             else
@@ -77,35 +75,32 @@ namespace AkkaAllConcur
                 t.Wait();
 
                 Messages.MembershipResponse m = 
-                    remoteActor.Ask<Messages.MembershipResponse>(new Messages.MembershipRequest(n)).Result;
+                    remoteActor.Ask<Messages.MembershipResponse>(new Messages.MembershipRequest(currentHost), TimeSpan.FromMinutes(5)).Result;
 
                 foreach (var rh in m.Hosts)
                 {
                     hosts.Add(rh);
                 }
 
-                hosts.Add(currentHost);
-                hostsConfig = new HostsConfig(hosts);
-
-                allActors = ReachActors(hostsConfig, system);
+                allActors = Deployment.ReachActors(hosts, system);
             }
-
-            ProgramConfig pConfig = new ProgramConfig(algConfig, hostsConfig);
-
+            
+            int number = 0;
             foreach (var a in thisHostActors)
             {
-                a.Tell(new Messages.InitServer(allActors.AsReadOnly(), pConfig));
+                a.Tell(new Messages.InitServer(allActors.AsReadOnly(), algConfig, hosts.AsReadOnly(), number, currentHost));
+                number++;
             }
 
             int msgI = 0;
 
             system.Scheduler.Advanced.ScheduleRepeatedly(TimeSpan.FromSeconds(1),
-                    TimeSpan.FromMilliseconds(5000),
+                    TimeSpan.FromMilliseconds(4000),
                     () =>
                     {
                         foreach (var a in thisHostActors)
                         {
-                            a.Tell(new Messages.BroadcastAtomically($"[{a.Path.Name}]:m{msgI}"));
+                            a.Tell(new Messages.BroadcastAtomically($"[{hostname}:{port}-{a.Path.Name}]:M{msgI}"));
                         }
                         msgI++;
                     });
@@ -126,12 +121,15 @@ namespace AkkaAllConcur
                             hostname = " + hostname + @"
                             port = " + port + @"
                         }
+                        transport-failure-detector {
+                            heartbeat-interval = 4 s
+                        }
                     }
                 }
             ");
 
             ActorSystem actorSystem = ActorSystem.Create(SystemName, systemConfig);
-            
+
             return actorSystem;
         }
         static List<IActorRef> CreateActors(ActorSystem system, int n)
@@ -148,31 +146,7 @@ namespace AkkaAllConcur
 
             return actors;
         }
-        static List<IActorRef> ReachActors(HostsConfig hostsConfig, ActorSystem system)
-        {
-            List<IActorRef> actors = new List<IActorRef>();
 
-            List<Host> allHosts = hostsConfig.Hosts;
-
-            foreach(var h in allHosts)
-            {
-                int count = h.ActorsNumber;
-
-                for (int i = 0; i < count; i++)
-                {
-                    string hostName = h.HostName;
-                    string port = h.Port;
-
-                    ActorSelection a = system.ActorSelection($"akka.tcp://{SystemName}@{hostName}:{port}/user/svr{i}");
-                    var t = a.ResolveOne(TimeSpan.FromMinutes(5));
-                    t.Wait();
-                    actors.Add(t.Result);
-                }
-
-            }
-
-            return actors;
-        }
 
     }
 }

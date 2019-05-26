@@ -5,12 +5,12 @@ using AkkaAllConcur.Configuration;
 
 namespace AkkaAllConcur.Messages
 {
-    class MembershipRequest
+    class NewMemberNotification
     {
-        public Host NewHost { get; private set; }
-        public MembershipRequest(Host nh)
+        public Host NewMember { get; private set; }
+        public NewMemberNotification(Host nm)
         {
-            NewHost = nh;
+            NewMember = nm;
         }
     }
 }

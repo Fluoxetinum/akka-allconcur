@@ -11,7 +11,13 @@ namespace AkkaAllConcur
     {
         public IStash Stash { get; set; }
 
-        ProgramConfig config;
+        Host myHost;
+        int myNumber;
+
+        AllConcurConfig algorithmConfig;
+        // Deployment?
+        DeploymentConfig deployingConfig;
+
         List<IActorRef> allActors;
         List<IActorRef> reliableSuccessors;
 
@@ -29,6 +35,10 @@ namespace AkkaAllConcur
         HashSet<IActorRef> stageReceivedFrom;
 
         Queue<Messages.MembershipRequest> membershipRequests;
+        Queue<IActorRef> pendingMembers;
+        bool stageNewMember;
+        bool newMembershipInitiator;
+        Dictionary<IActorRef, List<IActorRef>> pendingReliableOverlayGraph;
 
         int currentStage;
 
@@ -48,6 +58,10 @@ namespace AkkaAllConcur
             currentStage = 0;
 
             membershipRequests = new Queue<Messages.MembershipRequest>();
+            pendingMembers = new Queue<IActorRef>();
+            stageNewMember = false;
+            pendingReliableOverlayGraph = new Dictionary<IActorRef, List<IActorRef>>();
+            newMembershipInitiator = false;
 
             Receive<Messages.InitServer>(Initialize);
             ReceiveAny(_ => Stash.Stash());
@@ -55,14 +69,19 @@ namespace AkkaAllConcur
 
         public void Initialize(Messages.InitServer m)
         {
-            config = m.Config;
+            algorithmConfig = m.AlgortihmConfig;
+            var hs = m.Hosts;
+            var h = m.ServerHost;
+            var number = m.ServerNumber;
+
+            deployingConfig = new DeploymentConfig(hs.ToHashSet(), h, number);
 
             foreach (var a in m.AllActors)
             {
                 allActors.Add(a);
             }
 
-            reliableOverlayGraph = GraphCreator.ComputeAllReliableSuccessors(config, allActors);
+            reliableOverlayGraph = GraphCreator.ComputeAllReliableSuccessors(algorithmConfig, allActors);
             unreliableOverlayGraph = GraphCreator.ComputeAllUnreliableSucessors(allActors);
 
             foreach (var a in reliableOverlayGraph[Self])
@@ -77,6 +96,9 @@ namespace AkkaAllConcur
             }
             trackingGraphs[Self].Clear();
 
+            myHost = m.ServerHost;
+            myNumber = m.ServerNumber;
+
             BecomeReady();
         }
 
@@ -88,11 +110,30 @@ namespace AkkaAllConcur
 
         public void Ready()
         {
-            Receive<Messages.MembershipRequest>(NewMembershipRequest);
+            Receive<Messages.MembershipRequest>((m) =>
+            {
+                if (!deployingConfig.Hosts.Contains(m.NewHost))
+                {
+                    membershipRequests.Enqueue(m);
+                    pendingMembers.Enqueue(Sender);
+                }
+            });
+            Receive<Messages.NewMemberNotification>((m) =>
+            {
+                if (!deployingConfig.Hosts.Contains(m.NewMember))
+                {
+                    NewMemberReconfigure(m.NewMember);
+                    foreach (var s in reliableSuccessors)
+                    {
+                        s.Tell(new Messages.NewMemberNotification(m.NewMember));
+                    }
+                    stageNewMember = true;
+                }
+            });
 
             Receive<Messages.BroadcastAtomically>(NewMessageToBroadcast);
             Receive<Messages.BroadcastReliably>(NewRbroadcastedMessage);
-            
+
             Receive<Terminated>((m) => NewFailureNotification(m.ActorRef, Self));
             Receive<Messages.IndirectFailureNotification>((m) => NewFailureNotification(m.ActorRef, Sender));
             ReceiveAny(_ => Stash.Stash());
@@ -209,11 +250,16 @@ namespace AkkaAllConcur
             currentStage++;
             stageMsg = null;
 
-            if (membershipRequests.Count != 0)
+            if (membershipRequests.Count != 0 && !stageNewMember)
             {
-                var req = 
+                InitMembershipChange();
             }
-            else if (pendingMessages.Count != 0)
+            else if (stageNewMember)
+            {
+                CompleteMembershipChange();
+            }
+
+            if (pendingMessages.Count != 0)
             {
                 SendMyMessage();
             }
@@ -235,7 +281,7 @@ namespace AkkaAllConcur
 
             failureNotifications.Add(notification);
 
-            foreach(var pair in trackingGraphs)
+            foreach (var pair in trackingGraphs)
             {
                 var graph = pair.Value;
                 graph.ProcessCrash(notification, failureNotifications);
@@ -244,9 +290,69 @@ namespace AkkaAllConcur
             CheckTermination();
         }
 
-        public void NewMembershipRequest(Messages.MembershipRequest m)
+        public void InitMembershipChange()
         {
-            membershipRequests.Enqueue(m);
+            Messages.MembershipRequest req = membershipRequests.Dequeue();
+
+            NewMemberReconfigure(req.NewHost);
+
+            foreach (var s in reliableSuccessors)
+            {
+                s.Tell(new Messages.NewMemberNotification(req.NewHost));
+            }
+
+            newMembershipInitiator = true;
+            stageNewMember = true;
+        }
+
+        public void CompleteMembershipChange()
+        {
+            if (newMembershipInitiator)
+            {
+                IActorRef p = pendingMembers.Dequeue();
+
+                List<Host> hConfig = new List<Host>();
+                foreach (var h in deployingConfig.Hosts)
+                {
+                    hConfig.Add(h);
+                }
+
+                p.Tell(new Messages.MembershipResponse(hConfig.AsReadOnly(), hConfig.Count - 1));
+                newMembershipInitiator = false;
+            }
+
+            foreach (var s in reliableSuccessors)
+            {
+                if (!pendingReliableOverlayGraph[Self].Contains(s))
+                {
+                    Context.Unwatch(s);
+                }
+            }
+            reliableOverlayGraph = pendingReliableOverlayGraph;
+            pendingReliableOverlayGraph = null;
+            foreach (var a in reliableOverlayGraph[Self])
+            {
+                reliableSuccessors.Add(a);
+            }
+            foreach (var a in allActors)
+            {
+                trackingGraphs[a] = new TrackingGraph(reliableOverlayGraph, a);
+            }
+            trackingGraphs[Self].Clear();
+
+            stageNewMember = false;
+        }
+
+        public void NewMemberReconfigure(Host newMember)
+        {
+            deployingConfig.Hosts.Add(newMember);
+            allActors = Deployment.ReachActors(newMember, Context.System, allActors);
+            pendingReliableOverlayGraph = GraphCreator.ComputeAllReliableSuccessors(algorithmConfig, allActors);
+
+            foreach (var s in pendingReliableOverlayGraph[Self])
+            {
+                Context.Watch(s);
+            }
         }
     }
 }
