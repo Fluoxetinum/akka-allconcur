@@ -22,7 +22,11 @@ namespace AkkaAllConcur
         }
         public override int GetHashCode()
         {
-            return V1.GetHashCode() + V2.GetHashCode();
+            int hash = 17;
+            hash = hash * 23 * V1.Path.GetHashCode();
+            hash = hash * 23 * V2.Path.GetHashCode();
+
+            return hash;
         }
     }
 }

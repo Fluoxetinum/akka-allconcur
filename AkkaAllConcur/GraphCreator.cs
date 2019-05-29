@@ -19,18 +19,16 @@ namespace AkkaAllConcur
         {
             var successors = new Dictionary<IActorRef, List<IActorRef>>();
 
-            
-
             int N = actors.Count;
             int steps = (int)Math.Floor(Math.Log(N, 2));
 
-            StringBuilder str = new StringBuilder();
-            foreach (var a in actors)
-            {
-                str.Append(a + ",");
-            }
+            //StringBuilder str = new StringBuilder();
+            //foreach (var a in actors)
+            //{
+            //    str.Append(a + ",");
+            //}
 
-            Console.WriteLine($"{str}");
+            //Console.WriteLine($"{str}");
 
             for (int i = 0; i < N; i++)
             {
@@ -59,60 +57,56 @@ namespace AkkaAllConcur
 
         private static Dictionary<IActorRef, List<IActorRef>> ComputeUsingGs(List<IActorRef> actors)
         {
-            // just trying to learn...yet
+            int n = actors.Count;
+            // d >= 3, n >= 2d Quasiminimal
+            int some = (int)Math.Floor(Math.Sqrt(n));
+            int d = n / some;
+            if (d < 3)
+            {
+                Console.WriteLine("To few 'servers' in the system for Gs graph (mimimum - 9).");
+                throw new NotImplementedException();
+            }
 
-            var successors = new Dictionary<IActorRef, List<IActorRef>>();
+            int m = n / d;
+            int t = n % d;
 
-            /*
-
-            // d >= 3, n >= 2d
-            //int n = 9;
-            //int d = 3;
-
-            //int m = n / d;
-            //int t = n % d;
-
-            int d = 5;
-            int m = 3;
-
-            Dictionary<int, List<int>> graph = new Dictionary<int, List<int>>();
-
-            // ========================== GB
+            Dictionary<int, List<int>> Gb = new Dictionary<int, List<int>>();
 
             for (int i = 0; i < m; i++)
             {
-                graph[i] = new List<int>();
-
-                for (int j = 0; j < 3; j++)
+                Gb[i] = new List<int>();
+                for (int j = 0; j < m; j++)
                 {
-                    for (int k = 0; k < d; k++)
+                    for (int a = 0; a < d; a++)
                     {
-                        if (j == (i * d + k) % m)
+                        if (j == (i * d + a) % m)
                         {
-                            graph[i].Add(j);
+                            Gb[i].Add(j);
                         }
                     }
                 }
             }
 
-            // ======================== GB*
+            // Gb*
 
             int minSelfLoops = (int)Math.Floor(d / (double)m);
-
             List<int> maxSelfLoopsVertices = new List<int>();
+
+            for (int i = 0; i < m; i++)
+            {
+                int selfLoops = Gb[i].Where(v => v == i).Count();
+
+                if (selfLoops > minSelfLoops)
+                {
+                    maxSelfLoopsVertices.Add(i);
+                }
+            }
 
             for (int loop = 0; loop < minSelfLoops; loop++)
             {
                 for (int i = 0; i < m; i++)
                 {
-                    int selfLoops = graph[i].Where(v => v == i).Count();
-
-                    if (selfLoops > minSelfLoops)
-                    {
-                        maxSelfLoopsVertices.Add(i);
-                    }
-
-                    graph[i].Add((i + 1) % m);
+                    Gb[i].Add((i + 1) % m);
                 }
             }
 
@@ -120,72 +114,77 @@ namespace AkkaAllConcur
             {
                 int i = maxSelfLoopsVertices[s];
                 int j = maxSelfLoopsVertices[(s + 1) % maxSelfLoopsVertices.Count];
-                graph[i].Add(j);
+                Gb[i].Add(j);
             }
 
-            foreach (var pair in graph)
+            foreach (var pair in Gb)
             {
                 var list = pair.Value;
                 var i = pair.Key;
-
                 list.RemoveAll(v => v == i);
             }
 
-            // ======================== L(GB*)
+            // L(Gb*)
 
-            graph.Clear();
+            Dictionary<int, KeyValuePair<int, int>> LgbVertexes = new Dictionary<int, KeyValuePair<int, int>>();
+            Dictionary<int, List<int>> Lgb = new Dictionary<int, List<int>>();
 
-            for (int i = 0; i < m; i++)
+            int counterI = 0;
+            int counterJ = 0;
+            foreach (var u in Gb.Keys)
             {
-                graph[i] = new List<int>();
-                graph[i].Add((i + 1) % m);
-                graph[i].Add((m + i - 1) % m);
-            }
-
-            var graphL = new Dictionary<int, List<int>>();
-
-            foreach(var v in graph.Keys)
-            {
-                foreach(var e in graph[v])
+                counterJ = 0;
+                foreach (var v in Gb[u])
                 {
-                    graphL[v * 10 + e] = new List<int>();
+                    int i = counterI + counterJ;
+                    Lgb[i] = new List<int>();
+                    LgbVertexes[i] = new KeyValuePair<int, int>(u, v);
+                    counterJ++;
                 }
+
+                counterI += Gb[u].Count;
             }
 
-            foreach(var v1 in graphL.Keys)
+            int lastCounter = counterI;
+
+            foreach (var uv1 in LgbVertexes)
             {
-                int u = v1 / 10;
-                int v = v1 % 10;
-                foreach(var v2 in graphL.Keys)
+                int i = uv1.Key;
+                int u = LgbVertexes[i].Key;
+                int v = LgbVertexes[i].Value;
+
+                foreach (var uv2 in LgbVertexes)
                 {
-                    int w = v2 / 10;
-                    int z = v2 % 10;
+                    int j = uv2.Key;
+                    int w = LgbVertexes[j].Key;
+                    int z = LgbVertexes[j].Value;
 
                     if (v == w)
                     {
-                        graphL[v1].Add(v2);
+                        Lgb[i].Add(j);
                     }
 
                 }
+
             }
 
-            // ======================== GS
+            if (t == 0)
+            {
+                return CreateActorsGraphFromGs(actors, Lgb);
+            }
 
-            // if t == 0, GS == LGB
-
-            int d2 = 6;
-            int t2 = 4;
-
+            // Arbitrary value from Gb*
             Random rand = new Random();
             int randomVertex = rand.Next(m);
 
             List<int> X_vertexes = new List<int>();
             List<int> Y_vertexes = new List<int>();
 
-            foreach(var vertex in graphL.Keys)
+            foreach (var pair in LgbVertexes)
             {
-                int u = vertex / 10;
-                int v = vertex % 10;
+                int vertex = pair.Key;
+                int u = pair.Value.Key;
+                int v = pair.Value.Value;
 
                 if (u == randomVertex)
                 {
@@ -197,10 +196,58 @@ namespace AkkaAllConcur
                 }
             }
 
-            int t = 4; // vertex count to add
+            int jLast = lastCounter;
+            for (int i = 0; i < t; i++)
+            {
+                Lgb[jLast] = new List<int>();
 
-            */
+                for (int k = lastCounter; k < lastCounter + t; k++)
+                {
+                    if (k != jLast)
+                    {
+                        Lgb[jLast].Add(k);
+                    }
+                }
+                jLast++;
+            }
 
+            for (int i = 0; i < t; i++)
+            {
+                for (int j = i; j < i + d - t; j++)
+                {
+                    Lgb[X_vertexes[j]].Add(lastCounter + i);
+                    Lgb[lastCounter + i].Add(Y_vertexes[j]);
+                }
+            }
+
+            for (int i = 0; i < t; i++)
+            {
+                for (int p = 0; p < d - t + 1; p++)
+                {
+                    int q = (i + p) % (d - t + 1);
+                    int x = X_vertexes[i + p];
+                    int y = Y_vertexes[i + q];
+                    Lgb[x].Remove(y);
+                }
+            }
+
+            return CreateActorsGraphFromGs(actors, Lgb);
+        }
+
+        private static Dictionary<IActorRef, List<IActorRef>> CreateActorsGraphFromGs(List<IActorRef> actors, Dictionary<int, List<int>> gs)
+        {
+
+            var successors = new Dictionary<IActorRef, List<IActorRef>>();
+
+            foreach (var key in gs.Keys)
+            {
+                IActorRef i = actors[key];
+                successors[i] = new List<IActorRef>();
+                foreach (var val in gs[key])
+                {
+                    successors[i].Add(actors[val]);
+                }
+            }
             return successors;
         }
 

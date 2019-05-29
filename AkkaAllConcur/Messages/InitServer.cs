@@ -12,13 +12,15 @@ namespace AkkaAllConcur.Messages
         public ReadOnlyCollection<Host> Hosts { get; private set; }
         public int ServerNumber { get; private set; }
         public Host ServerHost { get; private set; }
-        public InitServer(ReadOnlyCollection<IActorRef> a, AllConcurConfig ac, ReadOnlyCollection<Host> h, int sn, Host sh)
+        public int Stage { get; private set; }
+        public InitServer(ReadOnlyCollection<IActorRef> a, AllConcurConfig ac, ReadOnlyCollection<Host> h, int sn, Host sh, int r)
         {
             AllActors = a;
             AlgortihmConfig = ac;
             Hosts = h;
             ServerNumber = sn;
             ServerHost = sh;
+            Stage = r;
         }
     }
 }

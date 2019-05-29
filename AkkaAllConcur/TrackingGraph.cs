@@ -1,5 +1,7 @@
 ﻿using System.Collections.Generic;
+using System.Text;
 using Akka.Actor;
+using System;
 
 namespace AkkaAllConcur
 {
@@ -15,6 +17,23 @@ namespace AkkaAllConcur
             {
                 return graph.Count == 0;
             }
+        }
+
+        public string GraphInfo()
+        {
+            StringBuilder strb = new StringBuilder();
+            foreach (var pair in graph)
+            {
+                IActorRef a = pair.Key;
+                strb.Append($"{a.ToShortString()} => ");
+                strb.Append("[");
+                foreach (var v in pair.Value)
+                {
+                    strb.Append(v.ToShortString() + " ");
+                }
+                strb.Append("]\n");
+            }
+            return strb.ToString();
         }
 
         public TrackingGraph(Dictionary<IActorRef, List<IActorRef>> alls, IActorRef server)
@@ -43,6 +62,9 @@ namespace AkkaAllConcur
         private bool pathExists(IActorRef to)
         {
             IActorRef from = trackedServer;
+
+            if (from.Path.Equals(to.Path)) return true;
+
             HashSet<IActorRef> visited = new HashSet<IActorRef>();
             Queue<IActorRef> notVisited = new Queue<IActorRef>();
             notVisited.Enqueue(from);
@@ -52,16 +74,16 @@ namespace AkkaAllConcur
                 var node = notVisited.Dequeue();
                 visited.Add(node);
 
-                foreach (var n in allSuccessors[node])
+                foreach (var n in graph[node])
                 {
                     if (visited.Contains(n))
                     {
                         continue;
                     }
 
-                    if (n == to)
+                    if (n.Path.Equals(to.Path))
                     {
-                        return false;
+                        return true;
                     }
                     else
                     {
@@ -73,7 +95,7 @@ namespace AkkaAllConcur
             return false;
         }
 
-        public void ProcessCrash(VertexPair crashedLink, HashSet<VertexPair> F)
+        public void ProcessCrash(VertexPair crashedLink, HashSet<VertexPair> F, bool outFlag)
         {
             IActorRef p = crashedLink.V1;
             IActorRef pk = crashedLink.V2;
@@ -89,7 +111,7 @@ namespace AkkaAllConcur
 
                 foreach (var n in allSuccessors[p])
                 {
-                    if (n != pk && n != trackedServer)
+                    if (!n.Equals(pk) && !n.Equals(trackedServer))
                     {
                         possibleRecipients.Enqueue(new VertexPair(p, n));
                     }
@@ -102,36 +124,61 @@ namespace AkkaAllConcur
                     if (!graph.ContainsKey(link.V2))
                     {
                         graph[link.V2] = new LinkedList<IActorRef>();
-                    }
 
-                    foreach (var err in F)
-                    {
-                        if (err.V1 == link.V2)
+                        foreach (var err in F)
                         {
-
-                            if (graph[link.V2].Count != 0) continue;
-
-                            foreach (var n in allSuccessors[link.V2])
+                            if (err.V1.Path.Equals(link.V2.Path))
                             {
-                                if (n == trackedServer) continue;
-                                VertexPair additional = new VertexPair(link.V2, n);
-                                if (!F.Contains(additional))
+                                foreach (var n in allSuccessors[link.V2])
                                 {
-                                    possibleRecipients.Enqueue(additional);
+                                    if (n.Path.Equals(trackedServer.Path)) continue;
+                                    VertexPair additional = new VertexPair(link.V2, n);
+                                    if (outFlag == true)
+                                    {
+                                        Console.WriteLine($"====================> Try to add {additional.V1.ToShortString()} {additional.V2.ToShortString()}");
+                                    }
+                                    
+                                    if (!F.Contains(additional))
+                                    {
+                                        if (outFlag == true)
+                                        {
+                                            Console.WriteLine($"====================> added {additional.V1.ToShortString()} {additional.V2.ToShortString()}");
+                                        }
+                                        possibleRecipients.Enqueue(additional);
+                                    }
                                 }
+                                break;
                             }
-                            break;
                         }
+
                     }
+
+
                 }
             }
             else
             {
                 graph[p].Remove(pk);
 
-                if (graph[p].Count == 0)
+                if (graph[p].Count == 0) // Not checked
                 {
-                    graph.Remove(p);
+                    Queue<IActorRef> pToDel = new Queue<IActorRef>();
+                    pToDel.Enqueue(p);
+
+                    while (pToDel.Count != 0)
+                    {
+                        IActorRef currentP = pToDel.Dequeue();
+                        graph.Remove(currentP);
+
+                        foreach (var key in graph.Keys)
+                        {
+                            graph[key].Remove(currentP);
+                            if (graph[key].Count == 0)
+                            {
+                                pToDel.Enqueue(key);
+                            }
+                        }
+                    }
                 }
 
                 List<IActorRef> keysToDelete = new List<IActorRef>();
@@ -148,24 +195,32 @@ namespace AkkaAllConcur
                 }
             }
 
-            int failures = 0;
+            bool failure = false;
 
             foreach (var pair in graph)
             {
                 IActorRef link = pair.Key;
                 foreach (var err in F)
                 {
-                    if (err.V1 == link)
+                    if (err.V1.Path.Equals(link.Path))
                     {
-                        failures++;
+                        failure = true;
                         break;
                     }
                 }
+
+                if (!failure)
+                {
+                    return;
+                }
+                failure = false;
             }
-            if (failures == graph.Count)
+            if (outFlag)
             {
-                Clear();
+                Console.WriteLine($"XXXXX {trackedServer.ToShortString()} cleared");
             }
+            Clear();
+
         }
     }
 }

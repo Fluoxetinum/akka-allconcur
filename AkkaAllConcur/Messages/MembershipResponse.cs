@@ -9,12 +9,12 @@ namespace AkkaAllConcur.Messages
 {
     class MembershipResponse
     {
-        public int LastIndex { get; private set; }
         public ReadOnlyCollection<Host> Hosts { get; private set; }
-        public MembershipResponse(ReadOnlyCollection<Host> hosts, int i)
+        public int NextStage { get; private set; }
+        public MembershipResponse(ReadOnlyCollection<Host> hosts, int r)
         {
             Hosts = hosts;
-            LastIndex = i;
+            NextStage = r;
         }
     }
 }
