@@ -1,5 +1,7 @@
 ﻿using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Text;
+using System.Linq;
 using Akka.Actor;
 using System;
 
@@ -19,22 +21,14 @@ namespace AkkaAllConcur
             }
         }
 
-        public string GraphInfo()
+        #region Logger Functions
+        public ReadOnlyDictionary<IActorRef, ReadOnlyCollection<IActorRef>> GetGraphCopy()
         {
-            StringBuilder strb = new StringBuilder();
-            foreach (var pair in graph)
-            {
-                IActorRef a = pair.Key;
-                strb.Append($"{a.ToShortString()} => ");
-                strb.Append("[");
-                foreach (var v in pair.Value)
-                {
-                    strb.Append(v.ToShortString() + " ");
-                }
-                strb.Append("]\n");
-            }
-            return strb.ToString();
+            var graphMsg = new ReadOnlyDictionary<IActorRef, ReadOnlyCollection<IActorRef>>
+                    (graph.ToDictionary(k => k.Key, v => v.Value.ToList().AsReadOnly()));
+            return graphMsg;
         }
+        #endregion
 
         public TrackingGraph(Dictionary<IActorRef, List<IActorRef>> alls, IActorRef server)
         {
@@ -133,6 +127,7 @@ namespace AkkaAllConcur
                                 {
                                     if (n.Path.Equals(trackedServer.Path)) continue;
                                     VertexPair additional = new VertexPair(link.V2, n);
+
                                     if (outFlag == true)
                                     {
                                         Console.WriteLine($"====================> Try to add {additional.V1.ToShortString()} {additional.V2.ToShortString()}");
@@ -144,6 +139,7 @@ namespace AkkaAllConcur
                                         {
                                             Console.WriteLine($"====================> added {additional.V1.ToShortString()} {additional.V2.ToShortString()}");
                                         }
+
                                         possibleRecipients.Enqueue(additional);
                                     }
                                 }

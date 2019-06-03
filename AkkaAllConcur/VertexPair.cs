@@ -3,7 +3,7 @@ using Akka.Actor;
 
 namespace AkkaAllConcur
 {
-    public class VertexPair : IEquatable<VertexPair>
+    public struct VertexPair : IEquatable<VertexPair>
     {
         public IActorRef V1 { get; private set; }
         public IActorRef V2 { get; private set; }
@@ -25,7 +25,6 @@ namespace AkkaAllConcur
             int hash = 17;
             hash = hash * 23 * V1.Path.GetHashCode();
             hash = hash * 23 * V2.Path.GetHashCode();
-
             return hash;
         }
     }

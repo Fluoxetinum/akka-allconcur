@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Text;
 using System.Linq;
 using System.Collections.Generic;
 using Akka.Actor;
@@ -18,17 +17,8 @@ namespace AkkaAllConcur
         private static Dictionary<IActorRef, List<IActorRef>> ComputeUsingBinomial(List<IActorRef> actors)
         {
             var successors = new Dictionary<IActorRef, List<IActorRef>>();
-
             int N = actors.Count;
             int steps = (int)Math.Floor(Math.Log(N, 2));
-
-            //StringBuilder str = new StringBuilder();
-            //foreach (var a in actors)
-            //{
-            //    str.Append(a + ",");
-            //}
-
-            //Console.WriteLine($"{str}");
 
             for (int i = 0; i < N; i++)
             {
@@ -58,13 +48,11 @@ namespace AkkaAllConcur
         private static Dictionary<IActorRef, List<IActorRef>> ComputeUsingGs(List<IActorRef> actors)
         {
             int n = actors.Count;
-            // d >= 3, n >= 2d Quasiminimal
-            int some = (int)Math.Floor(Math.Sqrt(n));
-            int d = n / some;
+            int rough_d = (int)Math.Ceiling(Math.Sqrt(n));
+            int d = rough_d;
             if (d < 3)
             {
-                Console.WriteLine("To few 'servers' in the system for Gs graph (mimimum - 9).");
-                throw new NotImplementedException();
+                return ComputeUsingBinomial(actors);
             }
 
             int m = n / d;
@@ -88,7 +76,6 @@ namespace AkkaAllConcur
             }
 
             // Gb*
-
             int minSelfLoops = (int)Math.Floor(d / (double)m);
             List<int> maxSelfLoopsVertices = new List<int>();
 
@@ -125,7 +112,6 @@ namespace AkkaAllConcur
             }
 
             // L(Gb*)
-
             Dictionary<int, KeyValuePair<int, int>> LgbVertexes = new Dictionary<int, KeyValuePair<int, int>>();
             Dictionary<int, List<int>> Lgb = new Dictionary<int, List<int>>();
 
@@ -173,9 +159,10 @@ namespace AkkaAllConcur
                 return CreateActorsGraphFromGs(actors, Lgb);
             }
 
-            // Arbitrary value from Gb*
-            Random rand = new Random();
-            int randomVertex = rand.Next(m);
+            // t > 0
+
+            // Arbitrary value from Gb* (here it is always 0)
+            int randomVertex = 0;
 
             List<int> X_vertexes = new List<int>();
             List<int> Y_vertexes = new List<int>();
@@ -183,14 +170,14 @@ namespace AkkaAllConcur
             foreach (var pair in LgbVertexes)
             {
                 int vertex = pair.Key;
-                int u = pair.Value.Key;
-                int v = pair.Value.Value;
+                int out_v = pair.Value.Key;
+                int in_v = pair.Value.Value;
 
-                if (u == randomVertex)
+                if (in_v == randomVertex)
                 {
                     X_vertexes.Add(vertex);
                 }
-                if (v == randomVertex)
+                if (out_v == randomVertex)
                 {
                     Y_vertexes.Add(vertex);
                 }
@@ -213,7 +200,7 @@ namespace AkkaAllConcur
 
             for (int i = 0; i < t; i++)
             {
-                for (int j = i; j < i + d - t; j++)
+                for (int j = i; j < i + d - t + 1; j++)
                 {
                     Lgb[X_vertexes[j]].Add(lastCounter + i);
                     Lgb[lastCounter + i].Add(Y_vertexes[j]);
@@ -236,7 +223,6 @@ namespace AkkaAllConcur
 
         private static Dictionary<IActorRef, List<IActorRef>> CreateActorsGraphFromGs(List<IActorRef> actors, Dictionary<int, List<int>> gs)
         {
-
             var successors = new Dictionary<IActorRef, List<IActorRef>>();
 
             foreach (var key in gs.Keys)
@@ -250,18 +236,5 @@ namespace AkkaAllConcur
             }
             return successors;
         }
-
-        public static Dictionary<IActorRef, IActorRef> ComputeAllUnreliableSucessors(List<IActorRef> actors)
-        {
-            var successors = new Dictionary<IActorRef, IActorRef>();
-
-            for (int i = 0; i < actors.Count; i++)
-            {
-                successors.Add(actors[i], actors[(i + 1) % actors.Count]);
-            }
-
-            return successors;
-        }
-
     }
 }

@@ -7,42 +7,27 @@ namespace AkkaAllConcur
 {
     public static class Deployment
     {
-        public static List<IActorRef> ReachActors(ICollection<Host> allHosts, ActorSystem system)
+        public static List<IActorRef> ReachActors(ICollection<HostInfo> allHosts, ActorSystem system)
         {
             List<IActorRef> actors = new List<IActorRef>();
 
             foreach (var h in allHosts)
             {
-                int count = h.ActorsNumber;
-
-                for (int i = 0; i < count; i++)
-                {
-                    string hostName = h.HostName;
-                    string port = h.Port;
-
-                    // TODO: Program.SystemName add to config
-                    ActorSelection a = system.ActorSelection($"akka.tcp://{Program.SystemName}@{hostName}:{port}/user/svr{i}");
-                    var t = a.ResolveOne(TimeSpan.FromMinutes(5));
-                    t.Wait();
-                    actors.Add(t.Result);
-                }
-
+                actors = Reach(system, actors, h.ActorsNumber, h.HostName, h.Port);
             }
 
             return actors;
         }
 
-        public static List<IActorRef> ReachActors(Host newHost, ActorSystem system, List<IActorRef> actors)
+        public static List<IActorRef> ReachActors(HostInfo newHost, ActorSystem system, List<IActorRef> actors)
         {
+            return Reach(system, actors, newHost.ActorsNumber, newHost.HostName, newHost.Port);
+        }
 
-            int count = newHost.ActorsNumber;
-
+        private static List<IActorRef> Reach(ActorSystem system, List<IActorRef> actors, int count, string hostName, string port)
+        {
             for (int i = 0; i < count; i++)
             {
-                string hostName = newHost.HostName;
-                string port = newHost.Port;
-
-                // TODO: Program.SystemName add to 
                 string path = $"akka.tcp://{Program.SystemName}@{hostName}:{port}/user/svr{i}";
                 ActorSelection a = system.ActorSelection(path);
                 var t = a.ResolveOne(TimeSpan.FromMinutes(5));

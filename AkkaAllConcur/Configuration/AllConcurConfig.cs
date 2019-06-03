@@ -11,11 +11,6 @@ namespace AkkaAllConcur.Configuration
         }
         public OverlayGraphType OverlayGraph { get; private set; }
 
-        public enum FailureDetectorType {
-            PERFECT, EVENTUALLY_PERFECT
-        }
-        public FailureDetectorType FailureDetector { get; private set; }
-
         public enum AlgorithmVersionType
         {
             BASIC,
@@ -24,11 +19,19 @@ namespace AkkaAllConcur.Configuration
         }
         public AlgorithmVersionType AlgorithmVersion { get; private set; }
 
-        public AllConcurConfig( OverlayGraphType gt, FailureDetectorType fd, AlgorithmVersionType av)
+        public enum OutputVerbosityType
+        {
+            TIME_ONLY,
+            INFO,
+            DEBUG
+        }
+        public OutputVerbosityType OutputVerbosity { get; private set; }
+
+        public AllConcurConfig( OverlayGraphType gt, AlgorithmVersionType av, OutputVerbosityType ov)
         {
             OverlayGraph = gt;
-            FailureDetector = fd;
             AlgorithmVersion = av;
+            OutputVerbosity = ov;
         }
     }
 }

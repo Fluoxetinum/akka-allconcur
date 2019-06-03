@@ -2,7 +2,7 @@
   "profiles": {
     "AkkaAllConcur": {
       "commandName": "Project",
-      "commandLineArgs": "localhost 14700 9 s"
+      "commandLineArgs": "localhost 14700 9 "
     }
   }
 }

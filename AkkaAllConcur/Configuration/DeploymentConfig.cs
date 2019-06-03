@@ -8,10 +8,10 @@ namespace AkkaAllConcur.Configuration
 {
     public class DeploymentConfig
     {
-        public Host ThisHost { get; private set; }
+        public HostInfo ThisHost { get; private set; }
         public int ThisServerNumber { get; private set; }
-        public HashSet<Host> Hosts { get; private set; }
-        public DeploymentConfig(HashSet<Host> h, Host th, int tsn)
+        public HashSet<HostInfo> Hosts { get; private set; }
+        public DeploymentConfig(HashSet<HostInfo> h, HostInfo th, int tsn)
         {
             Hosts = h;
             ThisHost = th;

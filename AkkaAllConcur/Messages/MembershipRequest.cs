@@ -7,8 +7,8 @@ namespace AkkaAllConcur.Messages
 {
     class MembershipRequest
     {
-        public Host NewHost { get; private set; }
-        public MembershipRequest(Host nh)
+        public HostInfo NewHost { get; private set; }
+        public MembershipRequest(HostInfo nh)
         {
             NewHost = nh;
         }

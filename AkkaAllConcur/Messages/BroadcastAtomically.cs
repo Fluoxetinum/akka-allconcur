@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace AkkaAllConcur.Messages
+﻿namespace AkkaAllConcur.Messages
 {
     class BroadcastAtomically
     {

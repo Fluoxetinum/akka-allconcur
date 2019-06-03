@@ -1,22 +1,21 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Xml;
+﻿using System.Xml;
+using System.IO;
 
 namespace AkkaAllConcur.Configuration
 {
     static class SettingsParser
     {
-        static string algorithmConfigPath = "Settings\\algorithm.xml";
+        static string[] algorithmConfigPath = { "Settings", "algorithm.xml" };
 
         public static AllConcurConfig ParseAlgConfig()
         {
+            string platformSpecificPath = Path.Combine(algorithmConfigPath);
 
             AllConcurConfig.OverlayGraphType gt = AllConcurConfig.OverlayGraphType.BINOMIAL;
-            AllConcurConfig.FailureDetectorType fd = AllConcurConfig.FailureDetectorType.PERFECT;
             AllConcurConfig.AlgorithmVersionType av = AllConcurConfig.AlgorithmVersionType.BASIC;
+            AllConcurConfig.OutputVerbosityType ov = AllConcurConfig.OutputVerbosityType.TIME_ONLY;
 
-            using (XmlReader r = XmlReader.Create(algorithmConfigPath,
+            using (XmlReader r = XmlReader.Create(platformSpecificPath,
                 new XmlReaderSettings { IgnoreWhitespace = true, IgnoreComments = true }))
             {
                 r.MoveToContent();
@@ -30,30 +29,22 @@ namespace AkkaAllConcur.Configuration
                 }
                 r.ReadEndElement();
 
-                r.ReadStartElement("epfd");
-                bool ep = r.ReadContentAsBoolean();
-                if (ep)
+                r.ReadStartElement("verbosity");
+                string v = r.ReadContentAsString();
+                if (v == "debug")
                 {
-                    fd = AllConcurConfig.FailureDetectorType.EVENTUALLY_PERFECT;
+                    ov = AllConcurConfig.OutputVerbosityType.DEBUG;
+                }
+                else if (v == "info")
+                {
+                    ov = AllConcurConfig.OutputVerbosityType.INFO;
                 }
                 r.ReadEndElement();
 
-                r.ReadStartElement("version");
-                string v = r.ReadContentAsString();
-                if (v == "allconcur-plus")
-                {
-                    av = AllConcurConfig.AlgorithmVersionType.PLUS;
-                }
-                else if (v == "allconcur-plus-uniform")
-                {
-                    av = AllConcurConfig.AlgorithmVersionType.PLUS_AND_UNIFORM;
-                }
-                r.ReadEndElement();
                 r.ReadEndElement();
             }
 
-            AllConcurConfig config = new AllConcurConfig(gt, fd, av);
-
+            AllConcurConfig config = new AllConcurConfig(gt, av, ov);
             return config;
         }
     }

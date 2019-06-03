@@ -7,8 +7,8 @@ namespace AkkaAllConcur.Messages
 {
     class NewMemberNotification
     {
-        public Host NewMember { get; private set; }
-        public NewMemberNotification(Host nm)
+        public HostInfo NewMember { get; private set; }
+        public NewMemberNotification(HostInfo nm)
         {
             NewMember = nm;
         }
