@@ -56,6 +56,10 @@ namespace AkkaAllConcur
             }
 
             int m = n / d;
+            if (m < 2)
+            {
+                return ComputeUsingBinomial(actors);
+            }
             int t = n % d;
 
             Dictionary<int, List<int>> Gb = new Dictionary<int, List<int>>();
@@ -235,6 +239,21 @@ namespace AkkaAllConcur
                 }
             }
             return successors;
+        }
+
+        public static List<IActorRef> ComputeInverse(Dictionary<IActorRef, List<IActorRef>> s, IActorRef a)
+        {
+            var predecessors = new List<IActorRef>();
+
+            foreach (var q in s.Keys)
+            {
+                if (s[q].Contains(a))
+                {
+                    predecessors.Add(q);
+                }
+            }
+
+            return predecessors;
         }
     }
 }

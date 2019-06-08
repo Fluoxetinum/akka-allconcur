@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <config> 
   <!--[bin]/[gs] graph (see paper)-->
-  <graph>bin</graph>
+  <graph>gs</graph>
   <!-- [time]/[info]/[debug] -->
-  <verbosity>time</verbosity>
+  <verbosity>debug</verbosity>
 </config>

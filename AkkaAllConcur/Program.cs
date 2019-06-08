@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Akka.Actor;
 using Akka.Configuration;
 using AkkaAllConcur.Configuration;
+using System.Diagnostics;
 
 namespace AkkaAllConcur
 {
@@ -15,7 +16,7 @@ namespace AkkaAllConcur
         }
 
         const int DEFAULT_N = 9;
-        const int DEFAULT_INTERVAL = 1000;
+        const int DEFAULT_INTERVAL = 1;
 
         public static string SystemName = "AllConcurSystem";
 
@@ -28,7 +29,7 @@ namespace AkkaAllConcur
             }
 
             DeploymentMode chosenMode;
-            if (args.Length > 5)
+            if (args.Length > 4)
             {
                 chosenMode = DeploymentMode.Remote;
             }
@@ -70,7 +71,27 @@ namespace AkkaAllConcur
 
             List<IActorRef> allActors;
             List<HostInfo> hosts = new List<HostInfo>();
-            
+
+
+            int interval;
+            try
+            {
+                if (chosenMode == DeploymentMode.Remote)
+                {
+                    interval = Convert.ToInt32(args[5]);
+                }
+                else //if (chosenMode == DeploymentMode.Local)
+                {
+                    interval = Convert.ToInt32(args[3]);
+                }
+            }
+            catch (Exception)
+            {
+                interval = DEFAULT_INTERVAL;
+            }
+
+            Console.WriteLine(interval);
+
             if (chosenMode == DeploymentMode.Remote)
             {
                 string remoteHost = args[3];
@@ -82,7 +103,7 @@ namespace AkkaAllConcur
                 var remoteActor = system.ActorSelection(remoteActorPath);
                 try
                 {
-                    var t = remoteActor.ResolveOne(TimeSpan.FromMinutes(5));
+                    var t = remoteActor.ResolveOne(TimeSpan.FromSeconds(30));
                     t.Wait();
                 }
                 catch (Exception)
@@ -117,44 +138,19 @@ namespace AkkaAllConcur
                 number++;
             }
 
-            int interval;
-            try
-            {
-                if (chosenMode == DeploymentMode.Remote)
-                {
-                    interval = Convert.ToInt32(args[5]);
-                }
-                else //if (chosenMode == DeploymentMode.Local)
-                {
-                    interval = Convert.ToInt32(args[3]);
-                }
-            }
-            catch (Exception)
-            {
-                interval = DEFAULT_INTERVAL;
-            }
-            int msgI = 0;
-            system.Scheduler.Advanced.ScheduleRepeatedly(TimeSpan.FromSeconds(1),
-                    TimeSpan.FromMilliseconds(interval),
-                    () =>
-                    {
-                        foreach (var a in thisHostActors)
-                        {
-                            a.Tell(new Messages.BroadcastAtomically($"[{hostname}:{port}-{a.Path.Name}]:M{msgI}"));
-                        }
-                        msgI++;
-                    }
-            );
+            Props props = Props.Create(() => new ClientSimulationActor(thisHostActors, interval));
+            IActorRef newActor = system.ActorOf(props, $"client");
+           
+            Thread.Sleep(TimeSpan.FromMinutes(10));
 
-            Thread.Sleep(TimeSpan.FromMinutes(5));
             system.Dispose();
         }
 
         static ActorSystem CreateActorSystem(string hostname, string port)
-        {
+        {   // loglevel = WARNING
             Config systemConfig = ConfigurationFactory.ParseString(@"
                 akka {
-                    loglevel = WARNING
+                    
                     actor {
                         provider = ""Akka.Remote.RemoteActorRefProvider, Akka.Remote""
                     }
@@ -164,7 +160,7 @@ namespace AkkaAllConcur
                             port = " + port + @"
                         }
                         transport-failure-detector {
-                            heartbeat-interval = 4 s
+                            
                         }
                     }
                 }
@@ -181,7 +177,7 @@ namespace AkkaAllConcur
             for (int i = 0; i < count; i++)
             {
                 Props props;
-                if (mode == DeploymentMode.Local && i == 0) { 
+                if (mode == DeploymentMode.Local && i == 0) {
                     props = Props.Create(() => new ServerActor(true));
                 }
                 else

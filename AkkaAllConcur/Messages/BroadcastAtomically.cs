@@ -1,4 +1,7 @@
-﻿namespace AkkaAllConcur.Messages
+﻿using System;
+using System.Runtime.Serialization.Formatters;
+
+namespace AkkaAllConcur.Messages
 {
     class BroadcastAtomically
     {
@@ -9,6 +12,7 @@
         }
         public override string ToString()
         {
+            
             if (Value == null) return "¤";
             return Value.ToString();
         }

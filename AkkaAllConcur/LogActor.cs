@@ -2,13 +2,17 @@
 using System.Collections.ObjectModel;
 using System.Text;
 using Akka.Actor;
-
+using System.Diagnostics;
 namespace AkkaAllConcur
 {
     class LogActor : ReceiveActor
     {
+        Stopwatch sw;
+
         public LogActor()
         {
+            sw = new Stopwatch();
+            sw.Start();
 
             Receive<Messages.LogABcastVerbose>((m) => {
 
@@ -32,7 +36,7 @@ namespace AkkaAllConcur
                 Console.WriteLine(output);
             });
             Receive<Messages.LogAbcast>((m) => {
-                Console.WriteLine($"{m.Stage} {m.RoundTime}");
+                Console.WriteLine($"{m.Stage} {m.RoundTime} {m.ActorsNumber} {m.Throughput} {sw.ElapsedMilliseconds}ms");
             });
 
             Receive<Messages.LogGraph>((m) => {
@@ -51,10 +55,6 @@ namespace AkkaAllConcur
                 output.Append("\n");
                 Console.WriteLine(output);
             });
-            Receive<Messages.LogFailure>((m) =>
-            {
-                Console.WriteLine(failureString(m.Notification));
-            });
             Receive<Messages.LogFailureVerbose>((m) => {
                 StringBuilder output = new StringBuilder();
                 output.AppendLine(failureString(m.Notification));
@@ -63,6 +63,12 @@ namespace AkkaAllConcur
                     output.Append($"|'{pair.V1.ToShortString()} crashed' - {pair.V2.ToShortString()} said.|\n");
                 }
                 Console.WriteLine(output);
+            });
+            Receive<Messages.LogFailure>((m) => {
+                Console.WriteLine(failureString(m.Notification));
+            });
+            Receive<Messages.LogMessage>((m) => {
+                Console.WriteLine(m.Message);
             });
         }
 
