@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Collections.ObjectModel;
 using Akka.Actor;
 using AkkaAllConcur.Configuration;
-
+using System;
 
 namespace AkkaAllConcur
 {
@@ -29,20 +29,17 @@ namespace AkkaAllConcur
         HashSet<IActorRef> faultyServers;
         Dictionary<IActorRef, TrackingGraph> trackingGraphs;
 
-        Queue<Messages.BroadcastAtomically> pendingMessages;
-        Messages.BroadcastAtomically EMPTY_MSG = new Messages.BroadcastAtomically(null);
-        Messages.BroadcastAtomically stageMsg;
+        Queue<Messages.Abroadcast> pendingMessages;
+        Messages.Abroadcast EMPTY_MSG = new Messages.Abroadcast(null);
+        Messages.Abroadcast stageMsg;
 
-        HashSet<Messages.BroadcastReliably> stageDeliveredMsgs;
+        HashSet<Messages.Rbroadcast> stageDeliveredMsgs;
         HashSet<IActorRef> stageReceivedFrom;
 
-        Queue<Messages.MembershipRequest> membershipRequests;
-        Queue<IActorRef> pendingMembers;
+        HostInfo newMember;
         bool stageNewMemberFlag;
-        bool newMembershipInitiatorFlag;
-        Dictionary<IActorRef, List<IActorRef>> pendingReliableOverlayGraph;
 
-        int currentStage;
+        int currentRound;
 
         IActorRef logger;
 
@@ -59,19 +56,14 @@ namespace AkkaAllConcur
             failureNotifications = new HashSet<VertexPair>();
             trackingGraphs = new Dictionary<IActorRef, TrackingGraph>();
 
-            pendingMessages = new Queue<Messages.BroadcastAtomically>();
+            pendingMessages = new Queue<Messages.Abroadcast>();
 
-            stageDeliveredMsgs = new HashSet<Messages.BroadcastReliably>();
+            stageDeliveredMsgs = new HashSet<Messages.Rbroadcast>();
             stageReceivedFrom = new HashSet<IActorRef>();
             stageMsg = null;
-            currentStage = 0;
+            currentRound = 0;
 
-
-            membershipRequests = new Queue<Messages.MembershipRequest>();
-            pendingMembers = new Queue<IActorRef>();
             stageNewMemberFlag = false;
-            pendingReliableOverlayGraph = new Dictionary<IActorRef, List<IActorRef>>();
-            newMembershipInitiatorFlag = false;
 
             logger = null;
             if (logging)
@@ -91,7 +83,7 @@ namespace AkkaAllConcur
                 logger.Tell(new Messages.LogMessage(msg));
             }
         }
-        public void SendADeliverLogMsg(List<Messages.BroadcastReliably> list, Stopwatch timer)
+        public void SendADeliverLogMsg(List<Messages.Rbroadcast> list, Stopwatch timer)
         {
             if (logger != null)
             {
@@ -102,7 +94,7 @@ namespace AkkaAllConcur
                 else if (algorithmConfig.OutputVerbosity == AllConcurConfig.OutputVerbosityType.TIME_ONLY)
                 {
                     int throughput = list.Aggregate(0, (seed, n) => {
-                        var q = n.Message.Value as ReadOnlyCollection<Messages.BroadcastAtomically>;
+                        var q = n.Message.Value as ReadOnlyCollection<Messages.Abroadcast>;
                         if (q != null)
                         {
                             return seed + q.Count;
@@ -113,7 +105,7 @@ namespace AkkaAllConcur
                         }
                     });
 
-                    logger.Tell(new Messages.LogAbcast(list[0].Stage, timer.ElapsedNanoSeconds(), trackingGraphs.Count, throughput));
+                    logger.Tell(new Messages.LogAbcast(list[0].Round, timer.ElapsedNanoSeconds(), trackingGraphs.Count, throughput));
                 }
             }
         }
@@ -164,7 +156,7 @@ namespace AkkaAllConcur
 
         public void Initialize(Messages.InitServer m)
         {
-            currentStage = m.Stage;
+            currentRound = m.Round;
 
             algorithmConfig = m.AlgortihmConfig;
             deploymentConfig = new DeploymentConfig(m.Hosts.ToHashSet(), m.ServerHost, m.ServerNumber);
@@ -207,49 +199,22 @@ namespace AkkaAllConcur
 
         public void Ready()
         {
-            Receive<Messages.MembershipRequest>((m) =>
-            {
-                if (!deploymentConfig.Hosts.Contains(m.NewHost))
-                {
-                    membershipRequests.Enqueue(m);
-                    pendingMembers.Enqueue(Sender);
-                }
-            });
-            Receive<Messages.NewMemberNotification>((m) =>
-            {
-                if (!deploymentConfig.Hosts.Contains(m.NewMember))
-                {
-                    NewMemberReconfigure(m.NewMember);
-                    foreach (var s in reliableSuccessors)
-                    {
-                        s.Forward(new Messages.NewMemberNotification(m.NewMember));
-                    }
-                    stageNewMemberFlag = true;
-                }
-            });
-
-            Receive<Messages.BroadcastAtomically>(NewMessageToBroadcast);
-            Receive<Messages.BroadcastReliably>(NewRbroadcastedMessage);
+            Receive<Messages.Abroadcast>(NewMessageToBroadcast);
+            Receive<Messages.Rbroadcast>(NewRbroadcastedMessage);
 
             Receive<Terminated>((m) =>
             {
 
-                IActorRef crashed = m.ActorRef;
-                
+                IActorRef crashed = m.ActorRef;   
                 faultyServers.Add(crashed);
-
                 IActorRef suspected = Self;
-
                 VertexPair notification = new VertexPair(crashed, suspected);
-
-                if (failureNotifications.Contains(notification))
+                if (!failureNotifications.Contains(notification))
                 {
-                    return;
-                }
-
-                foreach (var a in reliableSuccessors)
-                {
-                    a.Tell(new Messages.IndirectFailureNotification(crashed));
+                    foreach (var a in reliableSuccessors)
+                    {
+                        a.Tell(new Messages.IndirectFailureNotification(crashed));
+                    }
                 }
 
                 NewFailureNotification(notification);
@@ -260,19 +225,14 @@ namespace AkkaAllConcur
 
                 IActorRef crashed = m.ActorRef;
                 IActorRef suspected = Sender;
-
                 faultyServers.Add(crashed);
-
                 VertexPair notification = new VertexPair(crashed, suspected);
-
-                if (failureNotifications.Contains(notification))
+                if (!failureNotifications.Contains(notification))
                 {
-                    return;
-                }
-
-                foreach (var a in reliableSuccessors)
-                {
-                    a.Forward(m);
+                    foreach (var a in reliableSuccessors)
+                    {
+                        a.Forward(m);
+                    }
                 }
 
                 NewFailureNotification(notification);
@@ -282,7 +242,7 @@ namespace AkkaAllConcur
             
         }
 
-        public void NewMessageToBroadcast(Messages.BroadcastAtomically m)
+        public void NewMessageToBroadcast(Messages.Abroadcast m)
         {
             pendingMessages.Enqueue(m);
 
@@ -296,22 +256,33 @@ namespace AkkaAllConcur
         {
             timer.Restart();
 
-            var list = new List<Messages.BroadcastAtomically>();
+            Messages.Rbroadcast rbm;
 
-            int c = ACTOR_CAP;
-            if (pendingMessages.Count > ACTOR_CAP)
+            if (pendingMessages.Count == 0)
             {
-                c *= 3;
+                stageMsg = EMPTY_MSG;
+                rbm = new Messages.Rbroadcast(stageMsg, currentRound);
+            }
+            else
+            {
+                var list = new List<Messages.Abroadcast>();
+
+                int c = ACTOR_CAP;
+                if (pendingMessages.Count > ACTOR_CAP)
+                {
+                    c *= 3;
+                }
+
+                for (int i = 0; i < c && i < pendingMessages.Count; i++)
+                {
+                    list.Add(pendingMessages.Dequeue());
+                }
+
+                stageMsg = new Messages.Abroadcast(list.AsReadOnly());
+
+                rbm = new Messages.Rbroadcast(stageMsg, currentRound);
             }
 
-            for (int i = 0; i < c && i < pendingMessages.Count; i++)
-            {
-                list.Add(pendingMessages.Dequeue());
-            }
-
-            stageMsg = new Messages.BroadcastAtomically(list.AsReadOnly());
-
-            Messages.BroadcastReliably rbm = new Messages.BroadcastReliably(stageMsg, currentStage);
             foreach (var s in reliableSuccessors)
             {
                 s.Tell(rbm);
@@ -321,18 +292,18 @@ namespace AkkaAllConcur
             CheckTermination(); 
         }
 
-        public void NewRbroadcastedMessage(Messages.BroadcastReliably m)
+        public void NewRbroadcastedMessage(Messages.Rbroadcast m)
         {
             if (faultyServers.Contains(Sender))
             {
                 return;
             }
 
-            if (m.Stage < currentStage)
+            if (m.Round < currentRound)
             {
                 return;
             }
-            if (m.Stage > currentStage)
+            if (m.Round > currentRound)
             {
                 Stash.Stash();
                 return;
@@ -340,11 +311,6 @@ namespace AkkaAllConcur
 
             if (stageMsg == null)
             {
-                if (pendingMessages.Count == 0)
-                {
-                    pendingMessages.Enqueue(EMPTY_MSG);
-                }
-
                 SendMyMessage();
             }
 
@@ -363,21 +329,21 @@ namespace AkkaAllConcur
                 }
 
 
-                if (newMembershipInitiatorFlag && !stageNewMemberFlag)
+                if (stageNewMemberFlag && stageReceivedFrom.SetEquals(olds))
                 {
-                    if (stageReceivedFrom.SetEquals(olds))
+                    SendLogMsg("Joining completed.");
+                    var p = 
+                        Context.ActorSelection($"akka.tcp://{Program.SystemName}@{newMember.HostName}:{newMember.Port}/user/ack");
+
+                    List<HostInfo> hConfig = new List<HostInfo>();
+                    foreach (var h in deploymentConfig.Hosts)
                     {
-                        IActorRef p = pendingMembers.Dequeue();
-
-                        List<HostInfo> hConfig = new List<HostInfo>();
-                        foreach (var h in deploymentConfig.Hosts)
-                        {
-                            hConfig.Add(h);
-                        }
-
-                        p.Tell(new Messages.MembershipResponse(hConfig.AsReadOnly(), currentStage));
-                        newMembershipInitiatorFlag = false;
+                        hConfig.Add(h);
                     }
+
+                    p.Tell(new Messages.MembershipResponse(hConfig.AsReadOnly(), currentRound));
+                    stageNewMemberFlag = false;
+
                 }
             }
             CheckTermination();
@@ -389,6 +355,26 @@ namespace AkkaAllConcur
             {
                 var list = stageDeliveredMsgs.ToList();
                 list.Sort();
+
+                foreach (var m in list)
+                {
+                    var innerList = m.Message.Value as ReadOnlyCollection<Messages.Abroadcast>;
+                    if (innerList == null)
+                    {
+                        continue;
+                    }
+                    foreach (var im in innerList)
+                    {
+                        var req = im.Value as Messages.MembershipRequest;
+                        if (req != null)
+                        {
+                            stageNewMemberFlag = true;
+                            newMember = req.NewHost;
+                            break;
+                        }
+                    }
+
+                }
 
                 timer.Stop();
 
@@ -438,19 +424,16 @@ namespace AkkaAllConcur
                 }
             }
 
-            currentStage++;
+            currentRound++;
             stageMsg = null;
 
-            if (membershipRequests.Count != 0 && !stageNewMemberFlag && !newMembershipInitiatorFlag)
+            if (stageNewMemberFlag)
             {
+                olds = new HashSet<IActorRef>(allActors);
+                NewMemberReconfigure(newMember);
                 SendLogMsg("New membership request.");
-                InitMembershipChange();
             }
-            else if (stageNewMemberFlag)
-            {
-                SendLogMsg("Joining completed.");
-                CompleteMembershipChange();
-            }
+
             Stash.UnstashAll();
             if (pendingMessages.Count != 0 && pendingMessages.Count >= ACTOR_CAP)
             {
@@ -482,65 +465,53 @@ namespace AkkaAllConcur
             CheckTermination();
         }
 
-        public void InitMembershipChange()
+        public void NewMemberReconfigure(HostInfo newMember)
         {
-            Messages.MembershipRequest req = membershipRequests.Dequeue();
 
-            olds = new HashSet<IActorRef>(allActors);
-
-            NewMemberReconfigure(req.NewHost);
-
-            foreach (var s in reliableSuccessors)
-            {
-                s.Tell(new Messages.NewMemberNotification(req.NewHost));
-            }
-
-            newMembershipInitiatorFlag = true;
-            stageNewMemberFlag = true;
-        }
-
-        public void CompleteMembershipChange()
-        {
-          
-            foreach (var s in reliableSuccessors)
-            {
-               Context.Unwatch(s);
-            }
-            reliableOverlayGraph = pendingReliableOverlayGraph;
-            pendingReliableOverlayGraph = null;
+            deploymentConfig.Hosts.Add(newMember);
+            allActors = Deployment.ReachActors(newMember, Context.System, allActors);
+            var pendingReliableOverlayGraph = GraphCreator.ComputeAllReliableSuccessors(algorithmConfig, allActors);
 
             reliableSuccessors.Clear();
-            foreach (var a in reliableOverlayGraph[Self])
+
+            foreach (var s in pendingReliableOverlayGraph[Self])
             {
-                reliableSuccessors.Add(a);
+                reliableSuccessors.Add(s);
+                Context.Watch(s);
+            }
+
+            foreach (var s in reliableOverlayGraph[Self])
+            {
+                if (!reliableSuccessors.Contains(s))
+                {
+                    Context.Unwatch(s);
+                }
+            }
+
+            reliableOverlayGraph = pendingReliableOverlayGraph;
+
+            var pendingPredecessors = GraphCreator.ComputeInverse(reliableOverlayGraph, Self);
+            foreach (var a in pendingPredecessors)
+            {
                 Context.Watch(a);
             }
-            predecessors = GraphCreator.ComputeInverse(reliableOverlayGraph, Self);
+
             foreach (var a in predecessors)
             {
-                Context.Watch(a);
+                if (!pendingPredecessors.Contains(a))
+                {
+                    Context.Unwatch(a);
+                }
             }
+
+            predecessors = pendingPredecessors;
+
             trackingGraphs = new Dictionary<IActorRef, TrackingGraph>();
             foreach (var a in allActors)
             {
                 trackingGraphs[a] = new TrackingGraph(reliableOverlayGraph, a);
             }
             trackingGraphs[Self].Clear();
-
-            stageNewMemberFlag = false;
-
-        }
-
-        public void NewMemberReconfigure(HostInfo newMember)
-        {
-            deploymentConfig.Hosts.Add(newMember);
-            allActors = Deployment.ReachActors(newMember, Context.System, allActors);
-            pendingReliableOverlayGraph = GraphCreator.ComputeAllReliableSuccessors(algorithmConfig, allActors);
-
-            foreach (var s in pendingReliableOverlayGraph[Self])
-            {
-                Context.Watch(s);
-            }
         }
     }
 }

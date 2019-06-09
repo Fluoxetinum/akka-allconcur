@@ -3,21 +3,13 @@ using System.Collections.Generic;
 
 namespace AkkaAllConcur.Configuration
 {
-    class AllConcurConfig
+    public class AllConcurConfig
     {
         public enum OverlayGraphType
         {
             BINOMIAL, GS
         }
         public OverlayGraphType OverlayGraph { get; private set; }
-
-        public enum AlgorithmVersionType
-        {
-            BASIC,
-            PLUS,
-            PLUS_AND_UNIFORM
-        }
-        public AlgorithmVersionType AlgorithmVersion { get; private set; }
 
         public enum OutputVerbosityType
         {
@@ -27,10 +19,9 @@ namespace AkkaAllConcur.Configuration
         }
         public OutputVerbosityType OutputVerbosity { get; private set; }
 
-        public AllConcurConfig( OverlayGraphType gt, AlgorithmVersionType av, OutputVerbosityType ov)
+        public AllConcurConfig( OverlayGraphType gt, OutputVerbosityType ov)
         {
             OverlayGraph = gt;
-            AlgorithmVersion = av;
             OutputVerbosity = ov;
         }
     }

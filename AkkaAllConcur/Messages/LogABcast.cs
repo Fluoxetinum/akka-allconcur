@@ -22,10 +22,10 @@ namespace AkkaAllConcur.Messages
     }
     class LogABcastVerbose : LogAbcast
     {
-        public ReadOnlyCollection<Messages.BroadcastReliably> ADeliveredMsgs { get; private set; }
+        public ReadOnlyCollection<Messages.Rbroadcast> ADeliveredMsgs { get; private set; }
 
-        public LogABcastVerbose(ReadOnlyCollection<Messages.BroadcastReliably> am, long r, int an) : 
-            base(am[0].Stage, r, an)
+        public LogABcastVerbose(ReadOnlyCollection<Messages.Rbroadcast> am, long r, int an) : 
+            base(am[0].Round, r, an)
         {
             ADeliveredMsgs = am;
         }

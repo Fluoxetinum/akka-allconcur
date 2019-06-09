@@ -24,13 +24,26 @@ namespace AkkaAllConcur
 
                 StringBuilder output = new StringBuilder();
                 output.AppendLine(new string('-', 80));
-                output.AppendLine($"Round {m.Stage}, Actor '{Sender.Path}' " +
-                    $"A-Delivered in [{ms}ms{mcs}mcs{ns}ns] : ");
                 var msgs = m.ADeliveredMsgs;
+                output.AppendLine($"Round {m.Stage}, Actor '{Sender.Path}' " +
+                    $"A-Delivered {msgs.Count} msgs in [{ms}ms{mcs}mcs{ns}ns] : ");
 
                 for (int i = 0; i < msgs.Count; i++)
                 {
-                    output.Append(msgs[i].Message);
+                    var inner_msgs = msgs[i].Message.Value as ReadOnlyCollection<Messages.Abroadcast>;
+                    if (inner_msgs == null)
+                    {
+                        output.Append(msgs[i].Message);
+                    }
+                    else
+                    {
+                        for (int j = 0; j < inner_msgs.Count; j++)
+                        {
+                            output.Append(inner_msgs[j]);
+                            output.Append((j != inner_msgs.Count - 1) ? "," : "");
+                        }
+                    }
+
                     output.Append((i != msgs.Count - 1) ? " -> " : "#");
                 }
                 Console.WriteLine(output);
@@ -57,7 +70,7 @@ namespace AkkaAllConcur
             });
             Receive<Messages.LogFailureVerbose>((m) => {
                 StringBuilder output = new StringBuilder();
-                output.AppendLine(failureString(m.Notification));
+                output.AppendLine(failureString(m.Notification) + $"::{Sender}");
                 foreach (var pair in m.FailureNotifications)
                 {
                     output.Append($"|'{pair.V1.ToShortString()} crashed' - {pair.V2.ToShortString()} said.|\n");
@@ -65,7 +78,7 @@ namespace AkkaAllConcur
                 Console.WriteLine(output);
             });
             Receive<Messages.LogFailure>((m) => {
-                Console.WriteLine(failureString(m.Notification));
+                Console.WriteLine(failureString(m.Notification) + $"::{Sender}");
             });
             Receive<Messages.LogMessage>((m) => {
                 Console.WriteLine(m.Message);

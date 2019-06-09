@@ -12,7 +12,6 @@ namespace AkkaAllConcur.Configuration
             string platformSpecificPath = Path.Combine(algorithmConfigPath);
 
             AllConcurConfig.OverlayGraphType gt = AllConcurConfig.OverlayGraphType.BINOMIAL;
-            AllConcurConfig.AlgorithmVersionType av = AllConcurConfig.AlgorithmVersionType.BASIC;
             AllConcurConfig.OutputVerbosityType ov = AllConcurConfig.OutputVerbosityType.TIME_ONLY;
 
             using (XmlReader r = XmlReader.Create(platformSpecificPath,
@@ -44,7 +43,7 @@ namespace AkkaAllConcur.Configuration
                 r.ReadEndElement();
             }
 
-            AllConcurConfig config = new AllConcurConfig(gt, av, ov);
+            AllConcurConfig config = new AllConcurConfig(gt, ov);
             return config;
         }
     }

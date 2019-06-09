@@ -15,8 +15,7 @@ namespace AkkaAllConcur
             Local, Remote
         }
 
-        const int DEFAULT_N = 9;
-        const int DEFAULT_INTERVAL = 1;
+        const int DEFAULT_INTERVAL = 1_000;
 
         public static string SystemName = "AllConcurSystem";
 
@@ -48,7 +47,8 @@ namespace AkkaAllConcur
             }
             catch (Exception)
             {
-                n = DEFAULT_N;
+                Console.WriteLine("AkkaAllConcur (hostname port actors_count [hostname_to_connect port_to_connect])");
+                return;
             }
 
             AllConcurConfig algConfig = SettingsParser.ParseAlgConfig();
@@ -90,14 +90,12 @@ namespace AkkaAllConcur
                 interval = DEFAULT_INTERVAL;
             }
 
-            Console.WriteLine(interval);
-
             if (chosenMode == DeploymentMode.Remote)
             {
                 string remoteHost = args[3];
                 string remotePort = args[4];
 
-                Console.WriteLine($"Connecting to {remoteHost}:{remotePort}...");
+                
                 // Seed node is always srv0 
                 string remoteActorPath = $"akka.tcp://{SystemName}@{remoteHost}:{remotePort}/user/svr0";
                 var remoteActor = system.ActorSelection(remoteActorPath);
@@ -112,34 +110,20 @@ namespace AkkaAllConcur
                     return;
                 }
 
-                Messages.MembershipResponse m =
-                    remoteActor.Ask<Messages.MembershipResponse>(new Messages.MembershipRequest(currentHost), TimeSpan.FromMinutes(5)).Result;
+                Props ps = Props.Create(() => new MemberAckActor(system, thisHostActors, hosts, algConfig, currentHost, interval));
+                var ackA = system.ActorOf(ps, "ack");
 
-                foreach (var rh in m.Hosts)
-                {
-                    hosts.Add(rh);
-                }
-
-                allActors = Deployment.ReachActors(hosts, system);
-
-                stage = m.NextStage;
+                remoteActor.Tell(new Messages.Abroadcast(new Messages.MembershipRequest(currentHost)));
+                Console.WriteLine($"Connecting to {remoteHost}:{remotePort}...");
             }
             else //if (chosenMode == DeploymentMode.Local)
             {
                 Console.WriteLine($"Starting system on {hostname}:{port}");
                 hosts.Add(currentHost);
                 allActors = thisHostActors;
-            }
 
-            int number = 0;
-            foreach (var a in thisHostActors)
-            {
-                a.Tell(new Messages.InitServer(allActors.AsReadOnly(), algConfig, hosts.AsReadOnly(), number, currentHost, stage));
-                number++;
+                Deployment.InitActors(system, thisHostActors, allActors, hosts, algConfig, currentHost, stage, interval);
             }
-
-            Props props = Props.Create(() => new ClientSimulationActor(thisHostActors, interval));
-            IActorRef newActor = system.ActorOf(props, $"client");
            
             Thread.Sleep(TimeSpan.FromMinutes(10));
 
@@ -150,7 +134,7 @@ namespace AkkaAllConcur
         {   // loglevel = WARNING
             Config systemConfig = ConfigurationFactory.ParseString(@"
                 akka {
-                    
+                    loglevel = OFF
                     actor {
                         provider = ""Akka.Remote.RemoteActorRefProvider, Akka.Remote""
                     }
@@ -161,6 +145,9 @@ namespace AkkaAllConcur
                         }
                         transport-failure-detector {
                             
+                        }
+                        watch-failure-detector {
+
                         }
                     }
                 }
@@ -182,7 +169,7 @@ namespace AkkaAllConcur
                 }
                 else
                 {
-                    props = Props.Create(() => new ServerActor(false));
+                    props = Props.Create(() => new ServerActor(true));
                 }
                 IActorRef newActor = system.ActorOf(props, $"svr{i}");
                 actors.Add(newActor);

@@ -2,20 +2,20 @@
 
 namespace AkkaAllConcur.Messages
 {
-    class BroadcastReliably : IEquatable<BroadcastReliably>, IComparable<BroadcastReliably>
+    class Rbroadcast : IEquatable<Rbroadcast>, IComparable<Rbroadcast>
     {
         public Guid Id { get; private set; }
-        public BroadcastAtomically Message { get; private set; }
-        public int Stage { get; private set; }
+        public Abroadcast Message { get; private set; }
+        public int Round { get; private set; }
 
-        public BroadcastReliably(BroadcastAtomically m, int s)
+        public Rbroadcast(Abroadcast m, int s)
         {
             Message = m;
-            Stage = s;
+            Round = s;
             Id = Guid.NewGuid();
         }
 
-        public bool Equals(BroadcastReliably other)
+        public bool Equals(Rbroadcast other)
         {
             return Id.Equals(other.Id);
         }
@@ -24,7 +24,7 @@ namespace AkkaAllConcur.Messages
             return Id.GetHashCode();
         }
 
-        public int CompareTo(BroadcastReliably other)
+        public int CompareTo(Rbroadcast other)
         {
             if (Message.Value == null && other.Message.Value == null)
             {

@@ -37,5 +37,19 @@ namespace AkkaAllConcur
 
             return actors;
         }
+
+        public static void InitActors(ActorSystem system, List<IActorRef> thisHostActors, List<IActorRef> allActors, List<HostInfo> hosts, 
+            AllConcurConfig algConfig, HostInfo currentHost, int stage, int interval)
+        {
+            int number = 0;
+            foreach (var a in thisHostActors)
+            {
+                a.Tell(new Messages.InitServer(allActors.AsReadOnly(), algConfig, hosts.AsReadOnly(), number, currentHost, stage));
+                number++;
+            }
+
+            Props props = Props.Create(() => new ClientSimulationActor(thisHostActors, currentHost, interval));
+            IActorRef newActor = system.ActorOf(props, $"client");
+        }
     }
 }
